@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import type { LatestVideo } from '~/types/invidious';
 
-export const invidiousInstances = ['https://yt.parsonlabs.com'];
+export const invidiousInstances = ['https://inv.nadeko.net'];
 
 export const invidiousInstance = ref(invidiousInstances[0]);
 export const isAuthenticated = ref(false);
