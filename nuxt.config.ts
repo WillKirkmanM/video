@@ -5,7 +5,8 @@ export default defineNuxtConfig({
   modules: [
     '@nuxtjs/tailwindcss',
     'shadcn-nuxt',
-    '@nuxtjs/color-mode'
+    '@nuxtjs/color-mode',
+    '@nuxt/image',
   ],
   colorMode: {
     classSuffix: "",
@@ -28,7 +29,32 @@ export default defineNuxtConfig({
     }
   },
   routeRules: {
-    '/watch': { ssr: true },
-    '/': { ssr: true }
+    '/': { prerender: true },
+    '/settings': { prerender: true },
+    
+    '/watch': { swr: 300 },
+    '/channel/**': { swr: 600 },
+    '/playlist/**': { swr: 600 },
+    '/search': { swr: 60 }
   },
+  image: {
+    providers: {
+      ipx: {
+        provider: 'ipx',
+      },
+    },
+    presets: {
+      thumbnail: {
+        modifiers: {
+          format: 'webp',
+          width: 320,
+          height: 180,
+          quality: 80,
+        }
+      }
+    }
+  },
+  dir: {
+    pages: 'pages'
+  }
 })

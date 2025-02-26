@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  video-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "1994:1994"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
