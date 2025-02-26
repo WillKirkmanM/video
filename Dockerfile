@@ -12,4 +12,4 @@ RUN bun run build
 
 EXPOSE 1994
 
-CMD ["bun", "preview" "--port", "1994"]
+CMD ["bun", "preview", "--port", "1994"]
