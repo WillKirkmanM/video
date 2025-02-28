@@ -4,6 +4,7 @@ import { ref, onMounted, computed, watchEffect, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { invidiousService, invidiousInstance } from "~/services/invidious";
 import { subscriptionService } from "~/services/subscription";
+import { contentFilterService } from "~/services/content-filter"; // Add this import
 
 const route = useRoute();
 const router = useRouter();
@@ -108,7 +109,7 @@ function toggleUseDashUrl() {
 function toggleForceHighQuality() {
   forceHighQuality.value = !forceHighQuality.value;
   if (typeof localStorage !== "undefined") {
-    localStorage.setItem("forceHighQuality", forceHighQuality.value);
+    localStorage.setItem("forceHighQuality", String(forceHighQuality.value));
   }
 }
 
@@ -245,7 +246,19 @@ async function loadVideo() {
     videoData.value = await invidiousService.getVideoDetails(videoId.value);
 
     if (videoData.value?.recommendedVideos) {
-      relatedVideos.value = videoData.value.recommendedVideos;
+      relatedVideosFiltered.value = 0;
+      const filteredVideos = [];
+      
+      for (const video of videoData.value.recommendedVideos) {
+        const filterResult = await contentFilterService.shouldFilterVideo(video);
+        if (!filterResult.filtered) {
+          filteredVideos.push(video);
+        } else {
+          relatedVideosFiltered.value++;
+        }
+      }
+      
+      relatedVideos.value = filteredVideos;
     }
 
     if (playerType.value === "native") {
@@ -286,6 +299,9 @@ const commentsContinuation = ref(null);
 const sortByTop = ref(true);
 const showComments = ref(true);
 
+const relatedVideosFiltered = ref(0);
+const commentsFiltered = ref(0);
+
 async function fetchComments(continuation = null) {
   if (!videoId.value) return;
 
@@ -301,13 +317,33 @@ async function fetchComments(continuation = null) {
     }
 
     const response = await invidiousService.getComments(videoId.value, params);
-
-    if (continuation) {
-      comments.value = [...comments.value, ...response.comments];
-    } else {
-      comments.value = response.comments || [];
+    
+    const filteredComments = [];
+    let newFilteredCount = 0;
+    
+    if (response.comments) {
+      for (const comment of response.comments) {
+        const filterResult = await contentFilterService.shouldFilterVideo({
+          title: comment.content,
+          author: comment.author
+        });
+        
+        if (!filterResult.filtered) {
+          filteredComments.push(comment);
+        } else {
+          newFilteredCount++;
+        }
+      }
     }
 
+    if (continuation) {
+      comments.value = [...comments.value, ...filteredComments];
+    } else {
+      comments.value = filteredComments;
+      commentsFiltered.value = 0;
+    }
+    
+    commentsFiltered.value += newFilteredCount;
     commentsContinuation.value = response.continuation;
   } catch (error) {
     console.error("Error fetching comments:", error);
@@ -742,6 +778,13 @@ onMounted(() => {
                 </button>
               </div>
             </div>
+            
+            <div 
+              v-if="commentsFiltered > 0" 
+              class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-center text-sm"
+            >
+              {{ commentsFiltered }} {{ commentsFiltered === 1 ? 'comment was' : 'comments were' }} hidden by content filters
+            </div>
           </div>
         </div>
       </div>
@@ -791,6 +834,13 @@ onMounted(() => {
               </div>
             </div>
           </div>
+        </div>
+        
+        <div 
+          v-if="relatedVideosFiltered > 0" 
+          class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-center text-sm"
+        >
+          {{ relatedVideosFiltered }} {{ relatedVideosFiltered === 1 ? 'video was' : 'videos were' }} hidden by content filters
         </div>
       </div>
     </div>
