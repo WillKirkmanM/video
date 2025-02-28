@@ -117,7 +117,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <SidebarProvider :key="String(sidebarOpen)" :open="!sidebarOpen">
+  <SidebarProvider :open="!sidebarOpen">
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
