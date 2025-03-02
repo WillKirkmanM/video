@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="https://avatars.githubusercontent.com/u/138057124?s=200&v=4" />
+<!--   <img src="https://avatars.githubusercontent.com/u/138057124?s=200&v=4" /> -->
+  <img src="https://github.com/user-attachments/assets/7638256d-fb5a-4337-897c-1df89b45d7f8" height="300" width="300">
 </p>
 <h1 align="center">ParsonLabs Video</h1>
 
