@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import { invidiousService, invidiousInstance } from "~/services/invidious";
 import { subscriptionService } from "~/services/subscription";
 import { contentFilterService } from "~/services/content-filter";
+import { useHead } from '#head';
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +26,9 @@ const useDashUrl = ref(true);
 const isDescriptionExpanded = ref(false);
 const error = ref(null);
 const usingFallbackEmbed = ref(false);
+const origin = ref(
+  typeof window !== 'undefined' ? window.location.origin : 'https://video.parson.dev'
+);
 
 const youtubeFallbackUrl = computed(() => {
   if (!videoId.value) return "";
@@ -84,6 +88,31 @@ const directDashUrl = computed(() => {
 
 const directVideoUrl = computed(() => {
   return `${invidiousInstance.value}/watch?v=${videoId.value}&quality=${preferredQuality.value}&player_style=dash`;
+});
+
+const shareMetadata = computed(() => {
+  if (!videoData.value) return null;
+  
+  let thumbnailUrl = '';
+  if (videoData.value.videoThumbnails && videoData.value.videoThumbnails.length > 0) {
+    thumbnailUrl = videoData.value.videoThumbnails[0].url;
+    if (thumbnailUrl.startsWith('/')) {
+      thumbnailUrl = `${invidiousInstance.value}${thumbnailUrl}`;
+    }
+  } else {
+    thumbnailUrl = `https://i.ytimg.com/vi/${videoId.value}/hqdefault.jpg`;
+  }
+  
+  const description = videoData.value.description 
+    ? videoData.value.description.slice(0, 200) + (videoData.value.description.length > 200 ? '...' : '')
+    : `Video by ${videoData.value.author}`;
+    
+  return {
+    title: videoData.value.title,
+    description: description,
+    image: thumbnailUrl,
+    url: `${origin.value}/watch?v=${videoId.value}`
+  };
 });
 
 function toggleComments() {
@@ -322,14 +351,25 @@ async function loadVideo() {
   } catch (err) {
     console.error("Error loading video:", err);
     
-    if (err.toString().includes("login") || 
+    // Enhanced error detection for mobile devices
+    const shouldUseFallback = 
+        err.toString().includes("login") || 
         err.toString().includes("unavailable") || 
         err.status === 403 || 
         err.toString().includes("401") ||
         err.isCorsError === true ||
-        err.message === "Failed to fetch") {
-      
-      console.log("Using YouTube embed fallback due to API access issue");
+        err.message === "Failed to fetch" ||
+        err instanceof TypeError ||
+        (err.message && (
+          err.message.includes("network") ||
+          err.message.includes("connection") ||
+          err.message.includes("timeout") ||
+          err.message.includes("abort")
+        )) ||
+        !navigator.onLine;
+    
+    if (shouldUseFallback) {
+      console.log("Using YouTube embed fallback due to API access or network issue");
       usingFallbackEmbed.value = true;
       error.value = null;
       
@@ -380,6 +420,34 @@ watchEffect(() => {
     setupDashPlayer();
   }
 });
+
+watch(
+  () => shareMetadata.value,
+  (metadata) => {
+    if (!metadata) return;
+    
+    useHead({
+      title: `${metadata.title} - ParsonLabs Video`,
+      meta: [
+        { property: 'og:type', content: 'video.other' },
+        { property: 'og:title', content: metadata.title },
+        { property: 'og:description', content: metadata.description },
+        { property: 'og:image', content: metadata.image },
+        { property: 'og:url', content: metadata.url },
+        { property: 'og:site_name', content: 'ParsonLabs Video' },
+        
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:title', content: metadata.title },
+        { name: 'twitter:description', content: metadata.description },
+        { name: 'twitter:image', content: metadata.image },
+        
+        { property: 'og:video:tag', content: videoData.value.author },
+        { name: 'description', content: metadata.description }
+      ]
+    });
+  },
+  { immediate: false }
+);
 
 const comments = ref([]);
 const commentsLoading = ref(false);
