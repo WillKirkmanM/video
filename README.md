@@ -15,6 +15,10 @@
   <a href="https://github.com/WillKirkmanM/video/releases">Releases</a>
 </h4>
 
+<p align="center">
+  <img src="https://www.pwa-shields.com/1.0.0/series/certified/purple.svg" alt="PWA Shields" height="20">
+</p>
+
 <p align="center">ParsonLabs Video is your own personal and self-hosted YouTube, without all of the distractions that is plaguing the platform. <br /> Take Back Control.</p>
 
 <p align="center">
