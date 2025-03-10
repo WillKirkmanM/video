@@ -420,33 +420,20 @@ watchEffect(() => {
   }
 });
 
-watch(
-  () => shareMetadata.value,
-  (metadata) => {
-    if (!metadata) return;
-    
-    useHead({
-      title: `${metadata.title} - ParsonLabs Video`,
-      meta: [
-        { property: 'og:type', content: 'video.other' },
-        { property: 'og:title', content: metadata.title },
-        { property: 'og:description', content: metadata.description },
-        { property: 'og:image', content: metadata.image },
-        { property: 'og:url', content: metadata.url },
-        { property: 'og:site_name', content: 'ParsonLabs Video' },
-        
-        { name: 'twitter:card', content: 'summary_large_image' },
-        { name: 'twitter:title', content: metadata.title },
-        { name: 'twitter:description', content: metadata.description },
-        { name: 'twitter:image', content: metadata.image },
-        
-        { property: 'og:video:tag', content: videoData.value.author },
-        { name: 'description', content: metadata.description }
-      ]
-    });
-  },
-  { immediate: false }
-);
+useSeoMeta(() => ({
+  title: shareMetadata.value?.title,
+  ogTitle: shareMetadata.value?.title,
+  description: shareMetadata.value?.description,
+  ogDescription: shareMetadata.value?.description,
+  ogImage: shareMetadata.value?.image,
+  ogUrl: shareMetadata.value?.url,
+  ogType: 'video.other',
+  ogSiteName: 'ParsonLabs Video',
+  twitterCard: shareMetadata.value?.image,
+  twitterTitle: shareMetadata.value?.title,
+  twitterDescription: shareMetadata.value?.description,
+  twitterImage: shareMetadata.value?.image,
+}));
 
 const comments = ref([]);
 const commentsLoading = ref(false);
