@@ -390,7 +390,7 @@ onMounted(() => {
         :key="item.type + '-' + (item.videoId || item.authorId || item.playlistId)" 
         class="bg-white dark:bg-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
       >
-        <a v-if="item.type === 'channel'" :href="item.url" class="block p-4">
+        <NuxtLink v-if="item.type === 'channel'" :to="`/channel/${item.authorId}`" class="block p-4">
           <div class="flex items-center space-x-4">
             <nuxt-img
               :src="item.thumbnail"
@@ -411,9 +411,9 @@ onMounted(() => {
               </p>
             </div>
           </div>
-        </a>
+        </NuxtLink>
         
-        <a v-else-if="item.type === 'playlist'" :href="item.url" class="block">
+        <NuxtLink v-else-if="item.type === 'playlist'" :to="`/playlist/${item.playlistId}`" class="block">
           <div class="relative">
             <nuxt-img
               :src="item.thumbnail"
@@ -441,7 +441,7 @@ onMounted(() => {
               {{ item.channel }}
             </div>
           </div>
-        </a>
+        </NuxtLink>
         
         <NuxtLink 
           v-else 
@@ -465,12 +465,12 @@ onMounted(() => {
           <div class="p-4">
             <h3 class="font-medium text-base line-clamp-2">{{ item.title }}</h3>
             <div class="mt-2 flex items-center text-sm text-gray-600 dark:text-gray-400">
-              <a 
-                :href="`${item.authorUrl}`" 
+              <NuxtLink
+                :to="`${item.authorUrl}`" 
                 class="hover:text-red-600 dark:hover:text-red-400 transition-colors"
               >
                 {{ item.channel }}
-              </a>
+              </NuxtLink>
               <svg v-if="item.verified" class="w-4 h-4 ml-1 text-gray-500" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
               </svg>
