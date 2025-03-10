@@ -520,10 +520,23 @@ export const invidiousService = {
       const response = await fetch(
         `${invidiousInstance.value}/api/v1/videos/${videoId}`
       );
+      
+      if (!response.ok) {
+        const error: any = new Error(`Failed to fetch video: ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      
       return await response.json();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching video details:", error);
-      return null;
+      
+      if (error.message && error.message.includes("NetworkError") || 
+          error.name === "TypeError" && error.message === "Failed to fetch") {
+        error.isCorsError = true;
+      }
+      
+      throw error;
     }
   },
 

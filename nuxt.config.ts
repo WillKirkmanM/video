@@ -56,5 +56,10 @@ export default defineNuxtConfig({
   },
   dir: {
     pages: 'pages'
+  },
+  nitro: {
+    routeRules: {
+      '/api/**': { cors: true }
+    }
   }
 })
