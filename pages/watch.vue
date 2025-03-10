@@ -4,7 +4,7 @@ import { ref, onMounted, computed, watchEffect, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { invidiousService, invidiousInstance } from "~/services/invidious";
 import { subscriptionService } from "~/services/subscription";
-import { contentFilterService } from "~/services/content-filter"; // Add this import
+import { contentFilterService } from "~/services/content-filter";
 
 const route = useRoute();
 const router = useRouter();
@@ -24,6 +24,18 @@ const forceHighQuality = ref(true);
 const useDashUrl = ref(true);
 const isDescriptionExpanded = ref(false);
 const error = ref(null);
+const usingFallbackEmbed = ref(false);
+
+const youtubeFallbackUrl = computed(() => {
+  if (!videoId.value) return "";
+  let baseUrl = `https://www.youtube.com/embed/${videoId.value}?autoplay=1`;
+  
+  if (startTime.value > 0) {
+    baseUrl += `&start=${startTime.value}`;
+  }
+  
+  return baseUrl;
+});
 
 const isSubscribed = computed(() => {
   if (!videoData.value) return false;
@@ -73,6 +85,20 @@ const directDashUrl = computed(() => {
 const directVideoUrl = computed(() => {
   return `${invidiousInstance.value}/watch?v=${videoId.value}&quality=${preferredQuality.value}&player_style=dash`;
 });
+
+function toggleComments() {
+  showComments.value = !showComments.value;
+  if (showComments.value && comments.value.length === 0) {
+    fetchComments();
+  }
+}
+
+function toggleCommentSort() {
+  sortByTop.value = !sortByTop.value;
+  comments.value = [];
+  commentsContinuation.value = null;
+  fetchComments();
+}
 
 function toggleSubscription() {
   if (!videoData.value) return;
@@ -141,15 +167,22 @@ function getProperThumbnailUrl(video) {
 function formatViews(viewCount) {
   if (!viewCount) return "0";
 
-  const num = parseInt(viewCount);
+  if (typeof viewCount === 'string' && viewCount.match(/[KMB]$/)) {
+    return viewCount;
+  }
+
+  const num = typeof viewCount === 'string' ? 
+    parseInt(viewCount.replace(/,/g, '')) : 
+    viewCount;
+
   if (isNaN(num)) return "0";
 
   if (num >= 1000000000) {
-    return (num / 1000000000).toFixed(1) + "B";
+    return (num / 1000000000).toFixed(1).replace(/\.0$/, '') + "B";
   } else if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + "M";
+    return (num / 1000000).toFixed(1).replace(/\.0$/, '') + "M";
   } else if (num >= 1000) {
-    return (num / 1000).toFixed(1) + "K";
+    return (num / 1000).toFixed(1).replace(/\.0$/, '') + "K";
   }
 
   return new Intl.NumberFormat().format(num);
@@ -232,6 +265,21 @@ function setupDashPlayer() {
   }, 100);
 }
 
+async function fetchYouTubeMetadata(videoId) {
+  try {
+    const response = await fetch(`/api/youtube-metadata?videoId=${videoId}`);
+    if (!response.ok) throw new Error('Failed to fetch metadata from server');
+    
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    
+    return data;
+  } catch (err) {
+    console.error('Error fetching YouTube metadata:', err);
+    return null;
+  }
+}
+
 async function loadVideo() {
   if (!videoId.value) {
     error.value = "No video ID provided";
@@ -241,6 +289,7 @@ async function loadVideo() {
 
   error.value = null;
   isLoading.value = true;
+  usingFallbackEmbed.value = false;
 
   try {
     videoData.value = await invidiousService.getVideoDetails(videoId.value);
@@ -270,10 +319,42 @@ async function loadVideo() {
     if (typeof document !== "undefined" && videoData.value?.title) {
       document.title = `${videoData.value.title} - ParsonLabs Video`;
     }
-  } catch (error) {
-    console.error("Error loading video:", error);
-    error.value =
-      "Failed to load video. It might be unavailable or restricted.";
+  } catch (err) {
+    console.error("Error loading video:", err);
+    
+    if (err.toString().includes("login") || 
+        err.toString().includes("unavailable") || 
+        err.status === 403 || 
+        err.toString().includes("401") ||
+        err.isCorsError === true ||
+        err.message === "Failed to fetch") {
+      
+      console.log("Using YouTube embed fallback due to API access issue");
+      usingFallbackEmbed.value = true;
+      error.value = null;
+      
+      const ytMetadata = await fetchYouTubeMetadata(videoId.value);
+      
+      if (ytMetadata) {
+        videoData.value = ytMetadata;
+        relatedVideos.value = [];
+      } else {
+        videoData.value = {
+          videoId: videoId.value,
+          title: "Video Available via YouTube Embed",
+          viewCount: "N/A", 
+          publishedText: "N/A",
+          author: "Unknown",
+          likeCount: "N/A",
+          dislikeCount: "N/A", 
+          subCountText: "N/A",
+          description: "This video requires login or has CORS restrictions. Using YouTube embed as fallback."
+        };
+      }
+    } else {
+      error.value = "Failed to load video. It might be unavailable or restricted.";
+      videoData.value = null;
+    }
   } finally {
     isLoading.value = false;
   }
@@ -283,6 +364,13 @@ watch(
   () => videoId.value,
   () => {
     loadVideo();
+
+    if (showComments.value) {
+      comments.value = [];
+      commentsFiltered.value = 0;
+      commentsContinuation.value = null;
+      fetchComments();
+    }
   },
   { immediate: false }
 );
@@ -509,18 +597,32 @@ onMounted(() => {
       </router-link>
     </div>
 
-    <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2">
+    <div v-else :class="{
+      'grid grid-cols-1 lg:grid-cols-3 gap-6': relatedVideos.length > 0,
+      'max-w-4xl mx-auto': relatedVideos.length === 0
+    }">
+      <div :class="{
+        'lg:col-span-2': relatedVideos.length > 0
+      }">
         <div class="relative">
           <div class="aspect-video bg-black rounded-sm overflow-hidden">
             <video
-              v-if="playerType === 'native' && directDashUrl"
+              v-if="playerType === 'native' && directDashUrl && !usingFallbackEmbed"
               id="dash-video-player"
               class="w-full h-full rounded-xl"
               controls
               autoplay
               :src="directDashUrl"
             ></video>
+
+            <iframe
+              v-else-if="usingFallbackEmbed"
+              :src="youtubeFallbackUrl"
+              class="w-full h-full rounded-xl"
+              frameborder="0"
+              allowfullscreen
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            ></iframe>
 
             <iframe
               v-else
@@ -537,63 +639,63 @@ onMounted(() => {
           <h1 class="text-xl font-bold">{{ videoData.title }}</h1>
           <div class="flex justify-between mt-2">
             <div class="text-sm text-gray-600 dark:text-gray-400">
-              {{ formatViews(videoData.viewCount) }} views •
+              {{ videoData.viewCount !== 'N/A' ? `${formatViews(videoData.viewCount)} views •` : '' }}
               {{ videoData.publishedText }}
             </div>
 
             <div class="flex space-x-4">
-              <button class="flex items-center gap-1">
+              <button v-if="videoData.likeCount !== 'N/A'" class="flex items-center gap-1">
                 <ThumbsUp class="w-5 h-5" />
                 {{ formatViews(videoData.likeCount) }}
               </button>
-
-              <button class="flex items-center gap-1">
-                <ThumbsDown class="w-5 h-5" />
-                {{ formatViews(videoData.dislikeCount) }}
-              </button>
             </div>
           </div>
         </div>
 
-        <div class="mt-6 flex items-center pb-4 border-b">
-          <nuxt-img
-            :src="
-              videoData.authorThumbnails?.[0]?.url
-                ? videoData.authorThumbnails[0].url.split('=')[0]
-                : ''
-            "
-            class="w-12 h-12 rounded-full"
-            :alt="videoData.author"
-            provider="ipx"
-            format="webp"
-            quality="90"
-            width="48"
-            height="48"
-          />
-          <div class="ml-3">
-            <a :href="`/channel/${videoData.authorId}`">
-              <div class="font-medium">{{ videoData.author }}</div>
-            </a>
-            <div class="text-sm text-gray-600 dark:text-gray-400">
-              {{ videoData.subCountText }} subscribers
-            </div>
+        <div class="mt-6 flex items-center justify-between pb-4 border-b">
+          <div class="flex items-center">
+            <template v-if="videoData.authorId && videoData.author !== 'Unknown'">
+              <nuxt-img
+                v-if="videoData.authorThumbnails?.[0]?.url"
+                :src="videoData.authorThumbnails[0].url"
+                class="w-12 h-12 rounded-full"
+                :alt="videoData.author"
+                provider="ipx"
+                format="webp"
+                quality="90"
+                width="48"
+                height="48"
+              />
+              <div v-else class="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center">
+                <span>{{ videoData.author[0] }}</span>
+              </div>
+              <div class="ml-3">
+                <a :href="`/channel/${videoData.authorId}`" class="hover:underline">
+                  <div class="font-medium">{{ videoData.author }}</div>
+                </a>
+                <div v-if="videoData.subCountText && videoData.subCountText !== 'N/A'" 
+                     class="text-sm text-gray-600 dark:text-gray-400">
+                  {{ videoData.subCountText }} Subscribers
+                </div>
+              </div>
+            </template>
           </div>
-
+          
           <button
+            v-if="videoData.authorId"
             @click="toggleSubscription"
-            class="ml-auto px-4 py-2 rounded-full transition-colors"
-            :class="
-              isSubscribed
-                ? 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'
-                : 'bg-red-600 text-white hover:bg-red-700'
-            "
+            :class="{
+              'bg-gray-200 dark:bg-gray-700': isSubscribed,
+              'bg-red-600 text-white': !isSubscribed
+            }"
+            class="px-4 py-2 rounded-full font-medium hover:opacity-90"
           >
-            {{ isSubscribed ? "Subscribed" : "Subscribe" }}
+            {{ isSubscribed ? 'Subscribed' : 'Subscribe' }}
           </button>
         </div>
 
-        <div class="mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
-          <div v-if="videoData.description">
+        <div v-if="videoData.description" class="mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
+          <div>
             <p
               class="whitespace-pre-line text-sm"
               :class="{ 'line-clamp-4': !isDescriptionExpanded }"
@@ -777,19 +879,19 @@ onMounted(() => {
                   <span v-else>Load more comments</span>
                 </button>
               </div>
-            </div>
             
-            <div 
-              v-if="commentsFiltered > 0" 
-              class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-center text-sm"
-            >
-              {{ commentsFiltered }} {{ commentsFiltered === 1 ? 'comment was' : 'comments were' }} hidden by content filters
+              <div 
+                v-if="commentsFiltered > 0" 
+                class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-center text-sm"
+              >
+                {{ commentsFiltered }} {{ commentsFiltered === 1 ? 'comment was' : 'comments were' }} hidden by content filters
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div>
+      <div v-if="relatedVideos.length > 0">
         <h3 class="text-lg font-medium mb-4">Related videos</h3>
         <div class="space-y-4">
           <div
@@ -834,13 +936,13 @@ onMounted(() => {
               </div>
             </div>
           </div>
-        </div>
         
-        <div 
-          v-if="relatedVideosFiltered > 0" 
-          class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-center text-sm"
-        >
-          {{ relatedVideosFiltered }} {{ relatedVideosFiltered === 1 ? 'video was' : 'videos were' }} hidden by content filters
+          <div 
+            v-if="relatedVideosFiltered > 0" 
+            class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-center text-sm"
+          >
+            {{ relatedVideosFiltered }} {{ relatedVideosFiltered === 1 ? 'video was' : 'videos were' }} hidden by content filters
+          </div>
         </div>
       </div>
     </div>
