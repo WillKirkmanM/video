@@ -443,7 +443,11 @@ onMounted(() => {
           </div>
         </a>
         
-        <a v-else :href="item.url" class="block">
+        <NuxtLink 
+          v-else 
+          :to="{ path: '/watch', query: { v: item.videoId } }" 
+          class="block"
+        >
           <div class="relative">
             <nuxt-img
               :src="item.thumbnail"
@@ -475,7 +479,7 @@ onMounted(() => {
               {{ item.views }} views • {{ timeAgo(item.uploadDate) }}
             </div>
           </div>
-        </a>
+        </NuxtLink>
       </div>
     </div>
     
