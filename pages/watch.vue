@@ -5,7 +5,6 @@ import { useRoute, useRouter } from "vue-router";
 import { invidiousService, invidiousInstance } from "~/services/invidious";
 import { subscriptionService } from "~/services/subscription";
 import { contentFilterService } from "~/services/content-filter";
-import { useHead } from '#head';
 
 const route = useRoute();
 const router = useRouter();
